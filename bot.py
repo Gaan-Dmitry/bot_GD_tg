@@ -1,5 +1,6 @@
 import os
 import logging
+import mysql.connector
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters
 
@@ -14,8 +15,118 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv('BOT_TOKEN', '8501378717:AAGhzm-krzKpqBwxG_vB37dQvLkEeD_3cW8')
 ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', '6297103998')
 
+# Конфигурация базы данных
+DB_CONFIG = {
+    'host': 'localhost',
+    'database': 'u3299512_gaan-developments',
+    'user': 'u3299512_default',  # замените на вашего пользователя БД
+    'password': 'your_password_here'  # замените на ваш пароль БД
+}
+
 # Данные о пользователях
 user_requests = {}
+
+# Функции для работы с БД
+def get_db_connection():
+    """Создает подключение к базе данных"""
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        return conn
+    except mysql.connector.Error as e:
+        logger.error(f"Ошибка подключения к БД: {e}")
+        return None
+
+def save_bot_request(request_data):
+    """Сохраняет заявку из бота в базу данных"""
+    conn = get_db_connection()
+    if not conn:
+        return False
+    
+    try:
+        cursor = conn.cursor()
+        
+        # Маппинг типов услуг для БД
+        service_mapping = {
+            'landing': 'landing',
+            'shop': 'shop', 
+            'corporate': 'corporate',
+            'improve': 'landing'  # доработка сайта -> лендинг
+        }
+        
+        site_type = service_mapping.get(request_data.get('service', ''), 'landing')
+        
+        # Извлекаем контактные данные
+        contact_info = request_data.get('contact', '')
+        email = contact_info if '@' in contact_info else ''
+        phone = contact_info if '@' not in contact_info else ''
+        
+        query = """
+        INSERT INTO requests (site_type, design, content, support, budget, details, name, email, phone, created_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+        """
+        
+        values = (
+            site_type,
+            'need',  # по умолчанию нужен дизайн
+            'provide',  # по умолчанию предоставим контент
+            'maintenance',  # по умолчанию с поддержкой
+            'under_30',  # бюджет по умолчанию
+            request_data.get('description', ''),
+            request_data.get('name', ''),
+            email,
+            phone
+        )
+        
+        cursor.execute(query, values)
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"Заявка сохранена в БД для пользователя {request_data.get('name')}")
+        return True
+        
+    except mysql.connector.Error as e:
+        logger.error(f"Ошибка сохранения заявки в БД: {e}")
+        if conn:
+            conn.close()
+        return False
+
+def get_portfolio_works(category_key=None):
+    """Получает работы из портфолио из БД"""
+    conn = get_db_connection()
+    if not conn:
+        return []
+    
+    try:
+        cursor = conn.cursor(dictionary=True)
+        
+        # Маппинг категорий для БД
+        category_mapping = {
+            'landing': 'Лендинг',
+            'shop': 'Интернет-магазин',
+            'corporate': 'Корпоративный сайт',
+            'learning': 'Обучающая платформа'
+        }
+        
+        if category_key and category_key in category_mapping:
+            category_filter = category_mapping[category_key]
+            query = "SELECT * FROM works WHERE category = %s ORDER BY id DESC"
+            cursor.execute(query, (category_filter,))
+        else:
+            query = "SELECT * FROM works ORDER BY id DESC"
+            cursor.execute(query)
+        
+        works = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        return works
+        
+    except mysql.connector.Error as e:
+        logger.error(f"Ошибка получения портфолио из БД: {e}")
+        if conn:
+            conn.close()
+        return []
 
 # Команда /start
 def start(update, context):
@@ -69,21 +180,34 @@ def button_handler(update, context):
             [InlineKeyboardButton("🛒 Интернет-магазины", callback_data="portfolio_shop")],
             [InlineKeyboardButton("🏢 Корпоративные сайты", callback_data="portfolio_corporate")],
             [InlineKeyboardButton("🎓 Обучающие платформы", callback_data="portfolio_learning")],
-            [InlineKeyboardButton("🌐 Весь каталог", url="https://gaan-developments.ru/#portfolio")],
+            [InlineKeyboardButton("🌐 Все работы", callback_data="portfolio_all")],
             [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_main")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         query.edit_message_text(
             "📁 *Наше портфолио*\n\n"
-            "Вот некоторые из наших проектов:\n\n"
-            "• Онлайн-зоомагазин «ZooSwag» 🛒\n"
-            "• Сайт ремонтной компании «IРемонт» 🛠️\n"  
-            "• V.Museum - онлайн музей 🎓\n\n"
-            "Выберите категорию для деталей:",
+            "Выберите категорию для просмотра работ:",
             parse_mode='Markdown',
             reply_markup=reply_markup
         )
+    
+    elif query.data.startswith("portfolio_"):
+        category = query.data.replace("portfolio_", "")
+        works = get_portfolio_works(category if category != 'all' else None)
+        
+        if not works:
+            query.edit_message_text(
+                "В этой категории пока нет работ.\n\n"
+                "Посмотрите другие категории или свяжитесь с нами для обсуждения вашего проекта!",
+                parse_mode='Markdown'
+            )
+            return
+        
+        # Показываем первую работу с навигацией
+        context.user_data['current_portfolio_index'] = 0
+        context.user_data['portfolio_works'] = works
+        show_portfolio_work(query, context, 0)
     
     elif query.data == "price_request":
         user_requests[user_id] = {'type': 'price_request', 'step': 'name'}
@@ -162,6 +286,20 @@ def button_handler(update, context):
             parse_mode='Markdown'
         )
     
+    elif query.data == "portfolio_next":
+        works = context.user_data.get('portfolio_works', [])
+        current_index = context.user_data.get('current_portfolio_index', 0)
+        if current_index < len(works) - 1:
+            context.user_data['current_portfolio_index'] = current_index + 1
+            show_portfolio_work(query, context, current_index + 1)
+    
+    elif query.data == "portfolio_prev":
+        works = context.user_data.get('portfolio_works', [])
+        current_index = context.user_data.get('current_portfolio_index', 0)
+        if current_index > 0:
+            context.user_data['current_portfolio_index'] = current_index - 1
+            show_portfolio_work(query, context, current_index - 1)
+    
     elif query.data == "back_to_main":
         keyboard = [
             [InlineKeyboardButton("💼 Наши услуги", callback_data="services")],
@@ -180,6 +318,47 @@ def button_handler(update, context):
             parse_mode='Markdown',
             reply_markup=reply_markup
         )
+
+def show_portfolio_work(query, context, index):
+    """Показывает работу из портфолио"""
+    works = context.user_data.get('portfolio_works', [])
+    if not works or index >= len(works):
+        query.edit_message_text("Работы не найдены.")
+        return
+    
+    work = works[index]
+    
+    # Создаем клавиатуру навигации
+    keyboard = []
+    if index > 0:
+        keyboard.append([InlineKeyboardButton("⬅️ Предыдущая", callback_data="portfolio_prev")])
+    if index < len(works) - 1:
+        if keyboard:
+            keyboard[-1].append(InlineKeyboardButton("Следующая ➡️", callback_data="portfolio_next"))
+        else:
+            keyboard.append([InlineKeyboardButton("Следующая ➡️", callback_data="portfolio_next")])
+    
+    keyboard.extend([
+        [InlineKeyboardButton("📁 Вернуться к категориям", callback_data="portfolio")],
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_main")]
+    ])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Формируем сообщение
+    message = f"*{work['title']}*\n\n"
+    message += f"*Категория:* {work['category']}\n\n"
+    message += f"*Описание:*\n{work['description']}\n\n"
+    
+    if work.get('webarchive'):
+        message += f"[🌐 Посмотреть на WebArchive]({work['webarchive']})"
+    
+    query.edit_message_text(
+        message,
+        parse_mode='Markdown',
+        reply_markup=reply_markup,
+        disable_web_page_preview=True
+    )
 
 # Обработка текстовых сообщений
 def handle_message(update, context):
@@ -215,6 +394,9 @@ def handle_message(update, context):
     
     elif request['step'] == 'description':
         request['description'] = text
+        
+        # Сохраняем заявку в БД
+        save_bot_request(request)
         
         # Отправляем заявку администратору
         send_request_to_admin(request, user_id, update.message.from_user.username, context)
