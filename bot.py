@@ -1,6 +1,6 @@
 import os
 import logging
-import mysql.connector
+import pymysql
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters
 
@@ -19,8 +19,10 @@ ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', '6297103998')
 DB_CONFIG = {
     'host': 'localhost',
     'database': 'u3299512_gaan-developments',
-    'user': 'u3299512_gaan-dmitry',  # замените на вашего пользователя БД
-    'password': 'yZU-gQW-cET-qVK'  # замените на ваш пароль БД
+    'user': 'u3299512_gaan-dmitry',
+    'password': 'yZU-gQW-cET-qVK',
+    'charset': 'utf8mb4',
+    'cursorclass': pymysql.cursors.DictCursor
 }
 
 # Данные о пользователях
@@ -30,9 +32,9 @@ user_requests = {}
 def get_db_connection():
     """Создает подключение к базе данных"""
     try:
-        conn = mysql.connector.connect(**DB_CONFIG)
+        conn = pymysql.connect(**DB_CONFIG)
         return conn
-    except mysql.connector.Error as e:
+    except pymysql.Error as e:
         logger.error(f"Ошибка подключения к БД: {e}")
         return None
 
@@ -43,53 +45,49 @@ def save_bot_request(request_data):
         return False
     
     try:
-        cursor = conn.cursor()
-        
-        # Маппинг типов услуг для БД
-        service_mapping = {
-            'landing': 'landing',
-            'shop': 'shop', 
-            'corporate': 'corporate',
-            'improve': 'landing'  # доработка сайта -> лендинг
-        }
-        
-        site_type = service_mapping.get(request_data.get('service', ''), 'landing')
-        
-        # Извлекаем контактные данные
-        contact_info = request_data.get('contact', '')
-        email = contact_info if '@' in contact_info else ''
-        phone = contact_info if '@' not in contact_info else ''
-        
-        query = """
-        INSERT INTO requests (site_type, design, content, support, budget, details, name, email, phone, created_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
-        """
-        
-        values = (
-            site_type,
-            'need',  # по умолчанию нужен дизайн
-            'provide',  # по умолчанию предоставим контент
-            'maintenance',  # по умолчанию с поддержкой
-            'under_30',  # бюджет по умолчанию
-            request_data.get('description', ''),
-            request_data.get('name', ''),
-            email,
-            phone
-        )
-        
-        cursor.execute(query, values)
-        conn.commit()
-        cursor.close()
-        conn.close()
-        
-        logger.info(f"Заявка сохранена в БД для пользователя {request_data.get('name')}")
-        return True
-        
-    except mysql.connector.Error as e:
+        with conn.cursor() as cursor:
+            # Маппинг типов услуг для БД
+            service_mapping = {
+                'landing': 'landing',
+                'shop': 'shop', 
+                'corporate': 'corporate',
+                'improve': 'landing'  # доработка сайта -> лендинг
+            }
+            
+            site_type = service_mapping.get(request_data.get('service', ''), 'landing')
+            
+            # Извлекаем контактные данные
+            contact_info = request_data.get('contact', '')
+            email = contact_info if '@' in contact_info else ''
+            phone = contact_info if '@' not in contact_info else ''
+            
+            query = """
+            INSERT INTO requests (site_type, design, content, support, budget, details, name, email, phone, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            """
+            
+            values = (
+                site_type,
+                'need',  # по умолчанию нужен дизайн
+                'provide',  # по умолчанию предоставим контент
+                'maintenance',  # по умолчанию с поддержкой
+                'under_30',  # бюджет по умолчанию
+                request_data.get('description', ''),
+                request_data.get('name', ''),
+                email,
+                phone
+            )
+            
+            cursor.execute(query, values)
+            conn.commit()
+            logger.info(f"Заявка сохранена в БД для пользователя {request_data.get('name')}")
+            return True
+            
+    except pymysql.Error as e:
         logger.error(f"Ошибка сохранения заявки в БД: {e}")
-        if conn:
-            conn.close()
         return False
+    finally:
+        conn.close()
 
 def get_portfolio_works(category_key=None):
     """Получает работы из портфолио из БД"""
@@ -98,35 +96,31 @@ def get_portfolio_works(category_key=None):
         return []
     
     try:
-        cursor = conn.cursor(dictionary=True)
-        
-        # Маппинг категорий для БД
-        category_mapping = {
-            'landing': 'Лендинг',
-            'shop': 'Интернет-магазин',
-            'corporate': 'Корпоративный сайт',
-            'learning': 'Обучающая платформа'
-        }
-        
-        if category_key and category_key in category_mapping:
-            category_filter = category_mapping[category_key]
-            query = "SELECT * FROM works WHERE category = %s ORDER BY id DESC"
-            cursor.execute(query, (category_filter,))
-        else:
-            query = "SELECT * FROM works ORDER BY id DESC"
-            cursor.execute(query)
-        
-        works = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        
-        return works
-        
-    except mysql.connector.Error as e:
+        with conn.cursor() as cursor:
+            # Маппинг категорий для БД
+            category_mapping = {
+                'landing': 'Лендинг',
+                'shop': 'Интернет-магазин',
+                'corporate': 'Корпоративный сайт',
+                'learning': 'Обучающая платформа'
+            }
+            
+            if category_key and category_key in category_mapping:
+                category_filter = category_mapping[category_key]
+                query = "SELECT * FROM works WHERE category = %s ORDER BY id DESC"
+                cursor.execute(query, (category_filter,))
+            else:
+                query = "SELECT * FROM works ORDER BY id DESC"
+                cursor.execute(query)
+            
+            works = cursor.fetchall()
+            return works
+            
+    except pymysql.Error as e:
         logger.error(f"Ошибка получения портфолио из БД: {e}")
-        if conn:
-            conn.close()
         return []
+    finally:
+        conn.close()
 
 # Команда /start
 def start(update, context):
