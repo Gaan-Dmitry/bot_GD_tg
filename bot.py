@@ -1,9 +1,7 @@
 import os
 import logging
-import smtplib
-from email.mime.text import MimeText
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters, CallbackContext
 
 # Настройка логирования
 logging.basicConfig(
@@ -14,13 +12,13 @@ logger = logging.getLogger(__name__)
 
 # Конфигурация
 BOT_TOKEN = os.getenv('BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
-ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', 'YOUR_CHAT_ID')  # Ваш ID в Telegram для уведомлений
+ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', 'YOUR_CHAT_ID')
 
-# Данные о пользователях (в реальном проекте используйте БД)
+# Данные о пользователях
 user_requests = {}
 
 # Команда /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def start(update: Update, context: CallbackContext):
     keyboard = [
         [InlineKeyboardButton("💼 Наши услуги", callback_data="services")],
         [InlineKeyboardButton("📁 Портфолио", callback_data="portfolio")],
@@ -30,7 +28,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(
+    update.message.reply_text(
         "👋 Добро пожаловать в *Gaan Developments*!\n\n"
         "Мы создаем современные сайты, которые приносят результат:\n"
         "• 🎯 Лендинги\n• 🛒 Интернет-магазины\n• 🏢 Корпоративные сайты\n\n"
@@ -43,9 +41,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # Обработка кнопок
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def button_handler(update: Update, context: CallbackContext):
     query = update.callback_query
-    await query.answer()
+    query.answer()
     
     user_id = query.from_user.id
     
@@ -59,7 +57,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await query.edit_message_text(
+        query.edit_message_text(
             "💼 *Наши услуги*\n\n"
             "Выберите тип сайта для подробной информации:",
             parse_mode='Markdown',
@@ -76,7 +74,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await query.edit_message_text(
+        query.edit_message_text(
             "📁 *Наше портфолио*\n\n"
             "Вот некоторые из наших проектов:\n\n"
             "• Онлайн-зоомагазин «ZooSwag» 🛒\n"
@@ -89,7 +87,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif query.data == "price_request":
         user_requests[user_id] = {'type': 'price_request', 'step': 'name'}
-        await query.edit_message_text(
+        query.edit_message_text(
             "💰 *Расчет стоимости проекта*\n\n"
             "Давайте рассчитаем стоимость вашего сайта!\n\n"
             "Как вас зовут?",
@@ -98,7 +96,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif query.data == "consultation":
         user_requests[user_id] = {'type': 'consultation', 'step': 'name'}
-        await query.edit_message_text(
+        query.edit_message_text(
             "📞 *Бесплатная консультация*\n\n"
             "Я отвечу на все ваши вопросы о разработке сайта!\n\n"
             "Как вас зовут?",
@@ -145,7 +143,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         features_text = "\n".join([f"• {feature}" for feature in service["features"]])
         
-        await query.edit_message_text(
+        query.edit_message_text(
             f"{service['name']}\n\n"
             f"*Стоимость:* {service['price']}\n\n"
             f"*Описание:* {service['desc']}\n\n"
@@ -157,7 +155,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data.startswith("order_"):
         service_type = query.data.replace("order_", "")
         user_requests[user_id] = {'type': 'order', 'service': service_type, 'step': 'name'}
-        await query.edit_message_text(
+        query.edit_message_text(
             "📝 *Оформление заявки*\n\n"
             "Отлично! Давайте оформим заявку на разработку.\n\n"
             "Как вас зовут?",
@@ -174,7 +172,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await query.edit_message_text(
+        query.edit_message_text(
             "👋 Добро пожаловать в *Gaan Developments*!\n\n"
             "Мы создаем современные сайты, которые приносят результат:\n"
             "• 🎯 Лендинги\n• 🛒 Интернет-магазины\n• 🏢 Корпоративные сайты\n\n"
@@ -184,13 +182,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 # Обработка текстовых сообщений
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def handle_message(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     text = update.message.text
     
     if user_id not in user_requests:
         # Обычное сообщение - отправляем главное меню
-        await start(update, context)
+        start(update, context)
         return
     
     request = user_requests[user_id]
@@ -198,7 +196,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if request['step'] == 'name':
         request['name'] = text
         request['step'] = 'contact'
-        await update.message.reply_text(
+        update.message.reply_text(
             "Отлично! Теперь укажите ваш телефон или email для связи:"
         )
     
@@ -207,11 +205,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         request['step'] = 'description'
         
         if request['type'] == 'consultation':
-            await update.message.reply_text(
+            update.message.reply_text(
                 "Опишите ваш вопрос или проект. Что вас интересует?"
             )
         else:
-            await update.message.reply_text(
+            update.message.reply_text(
                 "Опишите ваш проект. Какие задачи должен решать сайт?"
             )
     
@@ -219,7 +217,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         request['description'] = text
         
         # Отправляем заявку администратору
-        await send_request_to_admin(request, user_id, update.message.from_user.username)
+        send_request_to_admin(request, user_id, update.message.from_user.username, context)
         
         # Подтверждение пользователю
         keyboard = [
@@ -229,7 +227,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await update.message.reply_text(
+        update.message.reply_text(
             "✅ *Спасибо за заявку!*\n\n"
             "Мы получили вашу заявку и свяжемся с вами в ближайшее время.\n\n"
             "Обычно мы отвечаем в течение 1-2 часов в рабочее время.",
@@ -242,7 +240,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             del user_requests[user_id]
 
 # Отправка заявки администратору
-async def send_request_to_admin(request, user_id, username):
+def send_request_to_admin(request, user_id, username, context):
     try:
         request_type = {
             'order': 'Заказ сайта',
@@ -271,8 +269,7 @@ async def send_request_to_admin(request, user_id, username):
         )
         
         # Отправляем сообщение администратору
-        admin_app = Application.builder().token(BOT_TOKEN).build()
-        await admin_app.bot.send_message(
+        context.bot.send_message(
             chat_id=ADMIN_CHAT_ID,
             text=message,
             parse_mode='Markdown'
@@ -282,7 +279,7 @@ async def send_request_to_admin(request, user_id, username):
         logger.error(f"Ошибка отправки уведомления: {e}")
 
 # Команда для администратора
-async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def admin_stats(update: Update, context: CallbackContext):
     if str(update.message.chat_id) != ADMIN_CHAT_ID:
         return
     
@@ -292,26 +289,30 @@ async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"ID администратора: {ADMIN_CHAT_ID}"
     )
     
-    await update.message.reply_text(stats_text)
+    update.message.reply_text(stats_text)
 
 # Обработка ошибок
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def error_handler(update: Update, context: CallbackContext):
     logger.error(f"Ошибка: {context.error}", exc_info=context.error)
 
 # Основная функция
 def main():
-    # Создаем приложение
-    application = Application.builder().token(BOT_TOKEN).build()
+    # Создаем updater
+    updater = Updater(BOT_TOKEN, use_context=True)
+    
+    # Получаем dispatcher для регистрации обработчиков
+    dp = updater.dispatcher
     
     # Добавляем обработчики
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("admin", admin_stats))
-    application.add_handler(CallbackQueryHandler(button_handler))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.add_error_handler(error_handler)
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("admin", admin_stats))
+    dp.add_handler(CallbackQueryHandler(button_handler))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+    dp.add_error_handler(error_handler)
     
     # Запускаем бота
-    application.run_polling()
+    updater.start_polling()
+    updater.idle()
 
 if __name__ == '__main__':
     main()
