@@ -2,7 +2,6 @@ import os
 import logging
 import pymysql
 import uuid
-from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters
 
@@ -129,6 +128,9 @@ def save_bot_request(request_data, user_id=None, username=None):
             # Генерируем уникальный ID
             unique_id = str(uuid.uuid4())
             
+            # Определяем тип заявки
+            request_type = request_data.get('type', 'consultation')
+            
             query = """
             INSERT INTO requests (
                 site_type, design, content, support, budget, details, 
@@ -148,7 +150,7 @@ def save_bot_request(request_data, user_id=None, username=None):
                 email,
                 phone,
                 'telegram',  # источник заявки
-                request_data.get('type', 'consultation'),  # тип заявки
+                request_type,  # тип заявки
                 unique_id,
                 user_id,
                 username
@@ -156,7 +158,7 @@ def save_bot_request(request_data, user_id=None, username=None):
             
             cursor.execute(query, values)
             conn.commit()
-            logger.info(f"Заявка сохранена в БД для пользователя {request_data.get('name')}, ID: {unique_id}")
+            logger.info(f"Заявка сохранена в БД для пользователя {request_data.get('name')}, ID: {unique_id}, Тип: {request_type}")
             return unique_id
             
     except pymysql.Error as e:
@@ -210,16 +212,29 @@ def start(update, context):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    update.message.reply_text(
-        "👋 Добро пожаловать в *Gaan Developments*!\n\n"
-        "Мы создаем современные сайты, которые приносят результат!\n\n"
-        "Я помогу вам:\n"
-        "• Узнать о наших услугах и ценах\n• Посмотреть примеры работ\n"
-        "• Получить консультацию\n• Оставить заявку на разработку\n\n"
-        "Выберите действие:",
-        parse_mode='Markdown',
-        reply_markup=reply_markup
-    )
+    if update.message:
+        update.message.reply_text(
+            "👋 Добро пожаловать в *Gaan Developments*!\n\n"
+            "Мы создаем современные сайты, которые приносят результат!\n\n"
+            "Я помогу вам:\n"
+            "• Узнать о наших услугах и ценах\n• Посмотреть примеры работ\n"
+            "• Получить консультацию\n• Оставить заявку на разработку\n\n"
+            "Выберите действие:",
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+    else:
+        query = update.callback_query
+        query.edit_message_text(
+            "👋 Добро пожаловать в *Gaan Developments*!\n\n"
+            "Мы создаем современные сайты, которые приносят результат!\n\n"
+            "Я помогу вам:\n"
+            "• Узнать о наших услугах и ценах\n• Посмотреть примеры работ\n"
+            "• Получить консультацию\n• Оставить заявку на разработку\n\n"
+            "Выберите действие:",
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
 
 # Обработка кнопок
 def button_handler(update, context):
@@ -396,13 +411,15 @@ def show_portfolio_work(query, context, index):
     
     # Создаем клавиатуру навигации
     keyboard = []
+    nav_buttons = []
+    
     if index > 0:
-        keyboard.append([InlineKeyboardButton("⬅️ Предыдущая", callback_data="portfolio_prev")])
+        nav_buttons.append(InlineKeyboardButton("⬅️ Предыдущая", callback_data="portfolio_prev"))
     if index < len(works) - 1:
-        if keyboard:
-            keyboard[-1].append(InlineKeyboardButton("Следующая ➡️", callback_data="portfolio_next"))
-        else:
-            keyboard.append([InlineKeyboardButton("Следующая ➡️", callback_data="portfolio_next")])
+        nav_buttons.append(InlineKeyboardButton("Следующая ➡️", callback_data="portfolio_next"))
+    
+    if nav_buttons:
+        keyboard.append(nav_buttons)
     
     keyboard.extend([
         [InlineKeyboardButton("📁 Вернуться к категориям", callback_data="portfolio")],
@@ -419,12 +436,20 @@ def show_portfolio_work(query, context, index):
     if work.get('webarchive'):
         message += f"[🌐 Посмотреть на WebArchive]({work['webarchive']})"
     
-    query.edit_message_text(
-        message,
-        parse_mode='Markdown',
-        reply_markup=reply_markup,
-        disable_web_page_preview=True
-    )
+    try:
+        # Пытаемся отредактировать сообщение
+        query.edit_message_text(
+            message,
+            parse_mode='Markdown',
+            reply_markup=reply_markup,
+            disable_web_page_preview=True
+        )
+    except Exception as e:
+        # Если возникает ошибка "message not modified", просто игнорируем её
+        if "Message is not modified" in str(e):
+            logger.info("Сообщение не изменилось, пропускаем редактирование")
+        else:
+            logger.error(f"Ошибка при редактировании сообщения: {e}")
 
 # Обработка текстовых сообщений
 def handle_message(update, context):
@@ -527,7 +552,11 @@ def send_request_to_admin(request, unique_id, context):
 
 # Обработка ошибок
 def error_handler(update, context):
-    logger.error(f"Ошибка: {context.error}", exc_info=context.error)
+    error = context.error
+    if "Message is not modified" in str(error):
+        logger.info("Сообщение не изменилось, пропускаем ошибку")
+    else:
+        logger.error(f"Ошибка: {error}", exc_info=error)
 
 # Основная функция
 def main():
