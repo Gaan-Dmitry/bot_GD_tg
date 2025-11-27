@@ -19,8 +19,8 @@ ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', '6297103998')
 DB_CONFIG = {
     'host': 'localhost',
     'database': 'u3299512_gaan-developments',
-    'user': 'u3299512_default',  # замените на вашего пользователя БД
-    'password': 'your_password_here'  # замените на ваш пароль БД
+    'user': 'u3299512_gaan-dmitry',  # замените на вашего пользователя БД
+    'password': 'yZU-gQW-cET-qVK'  # замените на ваш пароль БД
 }
 
 # Данные о пользователях
