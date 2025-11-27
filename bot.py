@@ -1,6 +1,8 @@
 import os
 import logging
 import pymysql
+import uuid
+from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters
 
@@ -28,6 +30,64 @@ DB_CONFIG = {
 # Данные о пользователях
 user_requests = {}
 
+# Обновленные категории и цены
+SERVICES = {
+    "landing": {
+        "name": "📰 Лендинг страница",
+        "price": "от 15 000 ₽",
+        "desc": "Идеальное решение для быстрого старта и привлечения клиентов!",
+        "features": ["Адаптивный дизайн", "SEO-оптимизация", "Формы обратной связи", "Интеграция с аналитикой"]
+    },
+    "shop": {
+        "name": "🛍 Интернет магазин", 
+        "price": "от 70 000 ₽",
+        "desc": "Полный функционал для вашего онлайн-бизнеса 24/7!",
+        "features": ["Каталог товаров", "Корзина и оформление", "Платежные системы", "Управление заказами"]
+    },
+    "blog": {
+        "name": "📝 Блог", 
+        "price": "от 25 000 ₽",
+        "desc": "Рассказывайте свою историю и делитесь экспертными знаниями!",
+        "features": ["Удобный редактор", "Категории и теги", "Комментарии", "SEO-оптимизация"]
+    },
+    "forum": {
+        "name": "💬 Форум", 
+        "price": "от 45 000 ₽",
+        "desc": "Создайте живое сообщество вокруг вашего бренда!",
+        "features": ["Разделы и темы", "Система рейтингов", "Модерация", "Уведомления"]
+    },
+    "corporate": {
+        "name": "🏠 Корпоративный сайт",
+        "price": "от 35 000 ₽", 
+        "desc": "Официальное лицо вашей компании в цифровом мире!",
+        "features": ["О компании", "Услуги/товары", "Контакты", "Блог/новости"]
+    },
+    "tool": {
+        "name": "🛠 Веб инструмент",
+        "price": "от 60 000 ₽",
+        "desc": "Практичные решения для автоматизации ваших задач!",
+        "features": ["Специфичный функционал", "База данных", "Пользовательские роли", "API"]
+    },
+    "portfolio": {
+        "name": "🎨 Портфолио", 
+        "price": "от 28 000 ₽",
+        "desc": "Ваша визитная карточка для привлечения лучших клиентов!",
+        "features": ["Галерея работ", "Фильтры", "Контактные формы", "Интеграция с соцсетями"]
+    },
+    "learning": {
+        "name": "🎓 Обучающая платформа",
+        "price": "от 90 000 ₽",
+        "desc": "Современное образование в удобном цифровом формате!",
+        "features": ["Курсы и уроки", "Система прогресса", "Тесты и задания", "Сертификаты"]
+    },
+    "improve": {
+        "name": "💎 Доработка сайта",
+        "price": "от 5 000 ₽",
+        "desc": "Улучшение и доработка существующих сайтов",
+        "features": ["Исправление ошибок", "Добавление функций", "Оптимизация", "Техподдержка"]
+    }
+}
+
 # Функции для работы с БД
 def get_db_connection():
     """Создает подключение к базе данных"""
@@ -38,7 +98,7 @@ def get_db_connection():
         logger.error(f"Ошибка подключения к БД: {e}")
         return None
 
-def save_bot_request(request_data):
+def save_bot_request(request_data, user_id=None, username=None):
     """Сохраняет заявку из бота в базу данных"""
     conn = get_db_connection()
     if not conn:
@@ -51,7 +111,12 @@ def save_bot_request(request_data):
                 'landing': 'landing',
                 'shop': 'shop', 
                 'corporate': 'corporate',
-                'improve': 'landing'  # доработка сайта -> лендинг
+                'blog': 'landing',
+                'forum': 'corporate',
+                'tool': 'corporate',
+                'portfolio': 'landing',
+                'learning': 'learning',
+                'improve': 'landing'
             }
             
             site_type = service_mapping.get(request_data.get('service', ''), 'landing')
@@ -61,9 +126,15 @@ def save_bot_request(request_data):
             email = contact_info if '@' in contact_info else ''
             phone = contact_info if '@' not in contact_info else ''
             
+            # Генерируем уникальный ID
+            unique_id = str(uuid.uuid4())
+            
             query = """
-            INSERT INTO requests (site_type, design, content, support, budget, details, name, email, phone, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            INSERT INTO requests (
+                site_type, design, content, support, budget, details, 
+                name, email, phone, request_source, request_type, 
+                unique_id, telegram_user_id, telegram_username, created_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             """
             
             values = (
@@ -75,13 +146,18 @@ def save_bot_request(request_data):
                 request_data.get('description', ''),
                 request_data.get('name', ''),
                 email,
-                phone
+                phone,
+                'telegram',  # источник заявки
+                request_data.get('type', 'consultation'),  # тип заявки
+                unique_id,
+                user_id,
+                username
             )
             
             cursor.execute(query, values)
             conn.commit()
-            logger.info(f"Заявка сохранена в БД для пользователя {request_data.get('name')}")
-            return True
+            logger.info(f"Заявка сохранена в БД для пользователя {request_data.get('name')}, ID: {unique_id}")
+            return unique_id
             
     except pymysql.Error as e:
         logger.error(f"Ошибка сохранения заявки в БД: {e}")
@@ -97,12 +173,13 @@ def get_portfolio_works(category_key=None):
     
     try:
         with conn.cursor() as cursor:
-            # Маппинг категорий для БД
+            # Обновленный маппинг категорий для БД
             category_mapping = {
                 'landing': 'Лендинг',
                 'shop': 'Интернет-магазин',
                 'corporate': 'Корпоративный сайт',
-                'learning': 'Обучающая платформа'
+                'learning': 'Обучающая платформа',
+                'portfolio': 'Портфолио'
             }
             
             if category_key and category_key in category_mapping:
@@ -135,8 +212,7 @@ def start(update, context):
     
     update.message.reply_text(
         "👋 Добро пожаловать в *Gaan Developments*!\n\n"
-        "Мы создаем современные сайты, которые приносят результат:\n"
-        "• 🎯 Лендинги\n• 🛒 Интернет-магазины\n• 🏢 Корпоративные сайты\n\n"
+        "Мы создаем современные сайты, которые приносят результат!\n\n"
         "Я помогу вам:\n"
         "• Узнать о наших услугах и ценах\n• Посмотреть примеры работ\n"
         "• Получить консультацию\n• Оставить заявку на разработку\n\n"
@@ -151,12 +227,18 @@ def button_handler(update, context):
     query.answer()
     
     user_id = query.from_user.id
+    username = query.from_user.username
     
     if query.data == "services":
         keyboard = [
-            [InlineKeyboardButton("🎯 Лендинг", callback_data="service_landing")],
-            [InlineKeyboardButton("🛒 Интернет-магазин", callback_data="service_shop")],
-            [InlineKeyboardButton("🏢 Корпоративный сайт", callback_data="service_corporate")],
+            [InlineKeyboardButton("📰 Лендинг", callback_data="service_landing")],
+            [InlineKeyboardButton("🛍 Интернет-магазин", callback_data="service_shop")],
+            [InlineKeyboardButton("📝 Блог", callback_data="service_blog")],
+            [InlineKeyboardButton("💬 Форум", callback_data="service_forum")],
+            [InlineKeyboardButton("🏠 Корпоративный сайт", callback_data="service_corporate")],
+            [InlineKeyboardButton("🛠 Веб инструмент", callback_data="service_tool")],
+            [InlineKeyboardButton("🎨 Портфолио", callback_data="service_portfolio")],
+            [InlineKeyboardButton("🎓 Обучающая платформа", callback_data="service_learning")],
             [InlineKeyboardButton("💎 Доработка сайта", callback_data="service_improve")],
             [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_main")]
         ]
@@ -171,9 +253,11 @@ def button_handler(update, context):
     
     elif query.data == "portfolio":
         keyboard = [
-            [InlineKeyboardButton("🛒 Интернет-магазины", callback_data="portfolio_shop")],
-            [InlineKeyboardButton("🏢 Корпоративные сайты", callback_data="portfolio_corporate")],
+            [InlineKeyboardButton("📰 Лендинги", callback_data="portfolio_landing")],
+            [InlineKeyboardButton("🛍 Интернет-магазины", callback_data="portfolio_shop")],
+            [InlineKeyboardButton("🏠 Корпоративные сайты", callback_data="portfolio_corporate")],
             [InlineKeyboardButton("🎓 Обучающие платформы", callback_data="portfolio_learning")],
+            [InlineKeyboardButton("🎨 Портфолио", callback_data="portfolio_portfolio")],
             [InlineKeyboardButton("🌐 Все работы", callback_data="portfolio_all")],
             [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_main")]
         ]
@@ -204,7 +288,12 @@ def button_handler(update, context):
         show_portfolio_work(query, context, 0)
     
     elif query.data == "price_request":
-        user_requests[user_id] = {'type': 'price_request', 'step': 'name'}
+        user_requests[user_id] = {
+            'type': 'price_request', 
+            'step': 'name',
+            'user_id': user_id,
+            'username': username
+        }
         query.edit_message_text(
             "💰 *Расчет стоимости проекта*\n\n"
             "Давайте рассчитаем стоимость вашего сайта!\n\n"
@@ -213,7 +302,12 @@ def button_handler(update, context):
         )
     
     elif query.data == "consultation":
-        user_requests[user_id] = {'type': 'consultation', 'step': 'name'}
+        user_requests[user_id] = {
+            'type': 'consultation', 
+            'step': 'name',
+            'user_id': user_id,
+            'username': username
+        }
         query.edit_message_text(
             "📞 *Бесплатная консультация*\n\n"
             "Я отвечу на все ваши вопросы о разработке сайта!\n\n"
@@ -223,34 +317,7 @@ def button_handler(update, context):
     
     elif query.data.startswith("service_"):
         service_type = query.data.replace("service_", "")
-        services = {
-            "landing": {
-                "name": "🎯 Лендинг",
-                "price": "от 15 000 руб.",
-                "desc": "Одностраничный сайт для быстрых продаж и генерации заявок",
-                "features": ["Адаптивный дизайн", "SEO-оптимизация", "Формы обратной связи", "Интеграция с аналитикой"]
-            },
-            "shop": {
-                "name": "🛒 Интернет-магазин", 
-                "price": "от 30 000 руб.",
-                "desc": "Полноценный магазин с каталогом, корзиной и оплатой",
-                "features": ["Каталог товаров", "Корзина и оформление", "Платежные системы", "Управление заказами"]
-            },
-            "corporate": {
-                "name": "🏢 Корпоративный сайт",
-                "price": "от 25 000 руб.", 
-                "desc": "Сайт для компании с несколькими страницами",
-                "features": ["О компании", "Услуги/товары", "Контакты", "Блог/новости"]
-            },
-            "improve": {
-                "name": "💎 Доработка сайта",
-                "price": "от 5 000 руб.",
-                "desc": "Улучшение и доработка существующих сайтов",
-                "features": ["Исправление ошибок", "Добавление функций", "Оптимизация", "Техподдержка"]
-            }
-        }
-        
-        service = services[service_type]
+        service = SERVICES.get(service_type, SERVICES["landing"])
         
         keyboard = [
             [InlineKeyboardButton("💰 Заказать расчет", callback_data="order_" + service_type)],
@@ -272,7 +339,13 @@ def button_handler(update, context):
     
     elif query.data.startswith("order_"):
         service_type = query.data.replace("order_", "")
-        user_requests[user_id] = {'type': 'order', 'service': service_type, 'step': 'name'}
+        user_requests[user_id] = {
+            'type': 'order', 
+            'service': service_type, 
+            'step': 'name',
+            'user_id': user_id,
+            'username': username
+        }
         query.edit_message_text(
             "📝 *Оформление заявки*\n\n"
             "Отлично! Давайте оформим заявку на разработку.\n\n"
@@ -306,8 +379,7 @@ def button_handler(update, context):
         
         query.edit_message_text(
             "👋 Добро пожаловать в *Gaan Developments*!\n\n"
-            "Мы создаем современные сайты, которые приносят результат:\n"
-            "• 🎯 Лендинги\n• 🛒 Интернет-магазины\n• 🏢 Корпоративные сайты\n\n"
+            "Мы создаем современные сайты, которые приносят результат!\n\n"
             "Выберите действие:",
             parse_mode='Markdown',
             reply_markup=reply_markup
@@ -357,6 +429,7 @@ def show_portfolio_work(query, context, index):
 # Обработка текстовых сообщений
 def handle_message(update, context):
     user_id = update.message.from_user.id
+    username = update.message.from_user.username
     text = update.message.text
     
     if user_id not in user_requests:
@@ -390,10 +463,10 @@ def handle_message(update, context):
         request['description'] = text
         
         # Сохраняем заявку в БД
-        save_bot_request(request)
+        unique_id = save_bot_request(request, user_id, username)
         
         # Отправляем заявку администратору
-        send_request_to_admin(request, user_id, update.message.from_user.username, context)
+        send_request_to_admin(request, unique_id, context)
         
         # Подтверждение пользователю
         keyboard = [
@@ -416,32 +489,30 @@ def handle_message(update, context):
             del user_requests[user_id]
 
 # Отправка заявки администратору
-def send_request_to_admin(request, user_id, username, context):
+def send_request_to_admin(request, unique_id, context):
     try:
-        request_type = {
+        request_type_names = {
             'order': 'Заказ сайта',
             'price_request': 'Запрос стоимости', 
             'consultation': 'Консультация'
-        }.get(request['type'], 'Заявка')
-        
-        service_names = {
-            'landing': 'Лендинг',
-            'shop': 'Интернет-магазин',
-            'corporate': 'Корпоративный сайт',
-            'improve': 'Доработка сайта'
         }
+        
+        request_type = request_type_names.get(request['type'], 'Заявка')
         
         service_info = ""
         if 'service' in request:
-            service_info = f"\nУслуга: {service_names.get(request['service'], request['service'])}"
+            service_name = SERVICES.get(request['service'], {}).get('name', request['service'])
+            service_info = f"\nУслуга: {service_name}"
         
         message = (
-            f"📨 *Новая заявка от @{username}*\n\n"
+            f"📨 *Новая заявка из Telegram*\n\n"
             f"Тип: {request_type}{service_info}\n"
+            f"ID заявки: `{unique_id}`\n"
             f"Имя: {request['name']}\n"
             f"Контакты: {request['contact']}\n"
             f"Описание: {request['description']}\n\n"
-            f"ID пользователя: {user_id}"
+            f"Пользователь: @{request.get('username', 'N/A')}\n"
+            f"ID пользователя: {request.get('user_id', 'N/A')}"
         )
         
         # Отправляем сообщение администратору
