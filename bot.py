@@ -1,7 +1,7 @@
 import os
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters, CallbackContext
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters
 
 # Настройка логирования
 logging.basicConfig(
@@ -11,14 +11,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Конфигурация
-BOT_TOKEN = os.getenv('BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
-ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', 'YOUR_CHAT_ID')
+BOT_TOKEN = os.getenv('BOT_TOKEN', '8501378717:AAGhzm-krzKpqBwxG_vB37dQvLkEeD_3cW8')
+ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', '6297103998')
 
 # Данные о пользователях
 user_requests = {}
 
 # Команда /start
-def start(update: Update, context: CallbackContext):
+def start(update, context):
     keyboard = [
         [InlineKeyboardButton("💼 Наши услуги", callback_data="services")],
         [InlineKeyboardButton("📁 Портфолио", callback_data="portfolio")],
@@ -41,7 +41,7 @@ def start(update: Update, context: CallbackContext):
     )
 
 # Обработка кнопок
-def button_handler(update: Update, context: CallbackContext):
+def button_handler(update, context):
     query = update.callback_query
     query.answer()
     
@@ -135,7 +135,7 @@ def button_handler(update: Update, context: CallbackContext):
         service = services[service_type]
         
         keyboard = [
-            [InlineKeyboardButton("💰 Заказать расчет", callback_data=f"order_{service_type}")],
+            [InlineKeyboardButton("💰 Заказать расчет", callback_data="order_" + service_type)],
             [InlineKeyboardButton("💬 Консультация", callback_data="consultation")],
             [InlineKeyboardButton("⬅️ Назад к услугам", callback_data="services")]
         ]
@@ -182,7 +182,7 @@ def button_handler(update: Update, context: CallbackContext):
         )
 
 # Обработка текстовых сообщений
-def handle_message(update: Update, context: CallbackContext):
+def handle_message(update, context):
     user_id = update.message.from_user.id
     text = update.message.text
     
@@ -278,21 +278,8 @@ def send_request_to_admin(request, user_id, username, context):
     except Exception as e:
         logger.error(f"Ошибка отправки уведомления: {e}")
 
-# Команда для администратора
-def admin_stats(update: Update, context: CallbackContext):
-    if str(update.message.chat_id) != ADMIN_CHAT_ID:
-        return
-    
-    stats_text = (
-        f"📊 Статистика бота\n\n"
-        f"Активные заявки: {len(user_requests)}\n"
-        f"ID администратора: {ADMIN_CHAT_ID}"
-    )
-    
-    update.message.reply_text(stats_text)
-
 # Обработка ошибок
-def error_handler(update: Update, context: CallbackContext):
+def error_handler(update, context):
     logger.error(f"Ошибка: {context.error}", exc_info=context.error)
 
 # Основная функция
@@ -305,13 +292,13 @@ def main():
     
     # Добавляем обработчики
     dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("admin", admin_stats))
     dp.add_handler(CallbackQueryHandler(button_handler))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+    dp.add_handler(MessageHandler(Filters.text, handle_message))
     dp.add_error_handler(error_handler)
     
     # Запускаем бота
     updater.start_polling()
+    logger.info("Бот запущен!")
     updater.idle()
 
 if __name__ == '__main__':
