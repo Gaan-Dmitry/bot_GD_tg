@@ -2,6 +2,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from database import save_bot_request
 from handlers.buttons import user_requests
 from handlers.start import start
+from config import ADMIN_CHAT_ID
 
 def handle_message(update, context):
     user_id = update.message.from_user.id
@@ -41,24 +42,31 @@ def handle_message(update, context):
         # Сохраняем заявку в БД
         unique_id = save_bot_request(request, user_id, username)
         
-        # Отправляем заявку администратору
-        send_request_to_admin(request, unique_id, context)
-        
-        # Подтверждение пользователю
-        keyboard = [
-            [InlineKeyboardButton("💼 Наши услуги", callback_data="services")],
-            [InlineKeyboardButton("📁 Портфолио", callback_data="portfolio")],
-            [InlineKeyboardButton("🌐 Наш сайт", url="https://gaan-developments.ru")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        update.message.reply_text(
-            "✅ *Спасибо за заявку!*\n\n"
-            "Мы получили вашу заявку и свяжемся с вами в ближайшее время.\n\n"
-            "Обычно мы отвечаем в течение 1-2 часов в рабочее время.",
-            parse_mode='Markdown',
-            reply_markup=reply_markup
-        )
+        if unique_id:
+            # Отправляем заявку администратору
+            send_request_to_admin(request, unique_id, context)
+            
+            # Подтверждение пользователю
+            keyboard = [
+                [InlineKeyboardButton("💼 Наши услуги", callback_data="services")],
+                [InlineKeyboardButton("📁 Портфолио", callback_data="portfolio")],
+                [InlineKeyboardButton("🌐 Наш сайт", url="https://gaan-developments.ru")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            update.message.reply_text(
+                "✅ *Спасибо за заявку!*\n\n"
+                "Мы получили вашу заявку и свяжемся с вами в ближайшее время.\n\n"
+                "Обычно мы отвечаем в течение 1-2 часов в рабочее время.",
+                parse_mode='Markdown',
+                reply_markup=reply_markup
+            )
+        else:
+            update.message.reply_text(
+                "❌ *Произошла ошибка при сохранении заявки.*\n\n"
+                "Пожалуйста, попробуйте еще раз или свяжитесь с нами другим способом.",
+                parse_mode='Markdown'
+            )
         
         # Очищаем данные пользователя
         if user_id in user_requests:
@@ -99,12 +107,12 @@ def send_request_to_admin(request, unique_id, context):
         )
         
         # Отправляем сообщение администратору
-        from config import ADMIN_CHAT_ID
         context.bot.send_message(
             chat_id=ADMIN_CHAT_ID,
             text=message,
             parse_mode='MarkdownV2'
         )
+        print(f"Уведомление отправлено администратору для заявки {unique_id}")
         
     except Exception as e:
         print(f"Ошибка отправки уведомления: {e}")

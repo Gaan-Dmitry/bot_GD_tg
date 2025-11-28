@@ -17,10 +17,7 @@ def show_portfolio_work(query, context, index):
     if index > 0:
         nav_buttons.append(InlineKeyboardButton("⬅️ Предыдущая", callback_data="portfolio_prev"))
     if index < len(works) - 1:
-        if nav_buttons:
-            nav_buttons.append(InlineKeyboardButton("Следующая ➡️", callback_data="portfolio_next"))
-        else:
-            nav_buttons = [InlineKeyboardButton("Следующая ➡️", callback_data="portfolio_next")]
+        nav_buttons.append(InlineKeyboardButton("Следующая ➡️", callback_data="portfolio_next"))
     
     if nav_buttons:
         keyboard.append(nav_buttons)
@@ -52,22 +49,13 @@ def show_portfolio_work(query, context, index):
         )
     except Exception as e:
         if "Message is not modified" in str(e):
-            # Если сообщение не изменилось, пробуем добавить немного разного контента
-            try:
-                message += "\n🔄"
-                query.edit_message_text(
-                    message,
-                    parse_mode='Markdown',
-                    reply_markup=reply_markup,
-                    disable_web_page_preview=True
-                )
-            except Exception as e2:
-                print(f"Не удалось обновить сообщение портфолио: {e2}")
+            print("Сообщение портфолио не изменилось - это нормально")
         else:
             print(f"Ошибка при редактировании сообщения портфолио: {e}")
 
 def handle_portfolio_category(query, context, category):
     """Обрабатывает выбор категории портфолио"""
+    print(f"Запрошена категория портфолио: {category}")
     works = get_portfolio_works(category if category != 'all' else None)
     
     if not works:

@@ -15,6 +15,7 @@ def save_bot_request(request_data, user_id=None, username=None):
     """Сохраняет заявку из бота в базу данных"""
     conn = get_db_connection()
     if not conn:
+        print("Не удалось подключиться к БД")
         return False
     
     try:
@@ -87,6 +88,7 @@ def get_portfolio_works(category_key=None):
     """Получает работы из портфолио из БД"""
     conn = get_db_connection()
     if not conn:
+        print("Не удалось подключиться к БД для получения портфолио")
         return []
     
     try:
@@ -108,6 +110,7 @@ def get_portfolio_works(category_key=None):
                 cursor.execute(query)
             
             works = cursor.fetchall()
+            print(f"Получено {len(works)} работ из портфолио")
             return works
             
     except pymysql.Error as e:

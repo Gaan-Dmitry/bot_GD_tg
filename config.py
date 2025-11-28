@@ -1,4 +1,5 @@
 import os
+import pymysql.cursors
 
 # Конфигурация бота
 BOT_TOKEN = os.getenv('BOT_TOKEN', '8501378717:AAGhzm-krzKpqBwxG_vB37dQvLkEeD_3cW8')
@@ -11,5 +12,5 @@ DB_CONFIG = {
     'user': 'u3299512_gaan-dmitry',
     'password': 'yZU-gQW-cET-qVK',
     'charset': 'utf8mb4',
-    'cursorclass': 'pymysql.cursors.DictCursor'
+    'cursorclass': pymysql.cursors.DictCursor  # Исправлено - класс, а не строка
 }
